@@ -1,0 +1,299 @@
+---
+title: "Simple exploratory web mapping"
+output: html_document
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sp)
+library(rgdal)
+library(rgeos)
+library(raster)
+library(leaflet)
+library(dplyr)
+us.web = readRDS("/Users/dauerbac/Google Drive/NHDplus/ecoregions/usL3ecoregUnionSimplpolys.rds")
+```
+
+March 2017
+[D. Auerbach](mailto:auerbach.daniel@epa.gov)(ORISE, USEPA Office of Water, Office of Wetlands, Oceans and Watersheds) *With thanks to Jeff Hollister, Marc Weber and Ryan Hill for feedback and inspiration.*
+
+
+## Workflow structure
+This example assumes basic familiarity with [R](http://cran.us.r-project.org) deployed within [RStudio](https://www.rstudio.com/products/RStudio/). Among other good background resources,  Jeff Hollister has put together a nice primer on [spatial data in R](http://jwhollister.com/iale_open_science/2015/07/05/03-Spatial-Data-In-R/). Function argument names are generally included here for clarity, but `?functionname()` is always a first step where something is unclear. Remember you may need to install.packages("packageName",dependencies = T) for several tools shown here.
+
+The goal is a **simple map as a standalone webpage** that can be viewed in a browser and easily shared (i.e., a .html file to attach or post). We'll briefly cover:
+
+1) Accessing and prepping a common dataset
+2) Building a basic mapview
+3) Getting fancier
+4) Static tmap
+5) Bonus ggplot->plotly
+
+
+----------------------------------
+
+##1. Get & prep some data
+
+R offers *MANY* ways to ingest spatial and nonspatial data, from older functions like [`raster::getData()`](https://www.rdocumentation.org/packages/raster/versions/2.5-8/topics/getData) to entire (excellent) packages like the USGS [waterData](https://cran.r-project.org/web/packages/waterData/index.html) to functions optimized for newer formats and protocols.
+
+\
+
+But let's begin with a standard approach and a familiar ESRI format. The following chunk downloads and unzips a shapefile of the CONUS LevelIII ecoregions. The objects `dir.zip`,`dir.shp` and `u` are just convenience strings pointing to file locations that make for easier-to-read function calls. 
+
+```{r eval=FALSE}
+dir.zip = tempdir() #where zip archive goes, change as desired...
+dir.shp = tempdir() #where extracted & processed files go; likely not a temporary directory and need not be different
+u = "ftp://newftp.epa.gov/EPADataCommons/ORD/Ecoregions/us/us_eco_l3.zip" #different data+file from the NA_CEC product including Canada & Mexico
+download.file(u, destfile = paste0(dir.zip, "/", basename(u)), quiet = F)
+unzip(zipfile = paste0(dir.zip, "/", basename(u)), exdir = dir.shp) #here creating the shapefile in a different directory from the zip file
+list.files(dir.shp)
+```
+
+Note this illustrates just one of many configurations, using temporary storage, but something like `if(!dir.exists("data")) dir.create("data")` could be used to store files when it makes sense to keep them locally. Note also that the US ecoregion data shown here are **NOT** the same as the [North American](https://www.epa.gov/eco-research/ecoregions-north-america) data, though this code could be lightly tweaked if `u = "ftp://newftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/NA_CEC_Eco_Level3.zip"`
+
+\
+
+Now, bring these data into the environment as a `SpatialPolygonsDataFrame` object. The workhorse `rgdal::readOGR()` function handles vector shapefiles (i.e., points, lines) and various other formats (e.g., gdb with an `ogrListLayers()` to figure out what elements to bring in). 
+
+```{r eval=FALSE}
+library(sp)
+library(rgdal)
+library(dplyr) #going to use the "%>%" operator 
+us = readOGR(dsn = dir.shp, layer = "us_eco_l3", stringsAsFactors = F) #1250 features/polys with 13 fields/attributes, 43.8mb
+str(us@data) #what attributes are available?
+length(unique(us$US_L3NAME)) #85 Level3s; alluvial & coastal plains have the greatest separate polygons: sort(table(us$US_L3NAME),decreasing = T)
+```
+
+\
+
+These 1250 features (polygons) with 13 fields (attributes) are associated with 85 distinct L3 ecoregions. "Carry only what you need" is generally a good data practice, **light is right** is especially true for a (standalone) web map. Knowing that we won't do any precise geospatial analyses here, we want to manipulate this big starting point. These steps (union & simplify) might only offer size and speed advantages, or they may be essential with a detailed "research grade" polygon/polyline dataset. Alternatively, they may be unnecessary with something less detailed or with point data, depending on number of points and clustering.
+
+```{r eval=FALSE}
+#The following steps may or may not be needed with a different dataset
+library(rgeos) #need some specialized tools for working with polygons
+gIsValid(us) #False, these include a self-intersection that will break things
+us = gBuffer(us, byid=TRUE, width=0) #fix that first; now true: gIsValid(us)
+
+#This merge/dissolve/union generates a spatial object without attributes (see also raster::aggregate)
+#but each polygon @ID corresponds to a level of the field defining the union  
+us.webpolys = rgeos::gUnaryUnion(us, id = us$US_L3NAME) #85 polys, 42mb; see: sapply(us.webpolys@polygons, function(p) p@ID)
+
+#Now spatially simplify (reduce number of coordinates)
+#It may take some trial & error to find value for tol that retains validity while getting to desired data size
+us.webpolys = rgeos::gSimplify(us.webpolys, tol=70, topologyPreserve = T) #now 8.8mb
+#worthwhile checks: gIsValid(us.webpolys); plot(us); plot(us.webpolys, add=T, border="lightblue")
+
+#Adding back attributes can get tricky if they vary within the merge field
+#Here simply taking the remaining field vals of the first row of each distinct L3NAME 
+us.webdata = us@data %>% dplyr::distinct(US_L3NAME, .keep_all = T) %>% dplyr::select(US_L3NAME,US_L3CODE,L2_KEY,L1_KEY)
+
+#Now we have a "lighter" object; note the last argument names the "data$field"" to match to "polygon@ID""
+us.web = SpatialPolygonsDataFrame(Sr = us.webpolys, data = us.webdata, match.ID = "US_L3NAME")
+#And we can save it out, again likely not to a temp directory 
+saveRDS(us.web, paste0(dir.shp,"/usL3ecoregUnionSimplpolys.rds"))
+```
+
+\
+
+At this point, we have something more suited to our goal of a standalone web map, and this `us.web` object will indeed render. But it's still fairly big & cumbersome for a demo. Rather than simplify further (certainly an option), let's just take a subset. Spatial subsetting (intersection) can follow an elegant syntax in R, but to keep it reproducible and avoid getting+prepping another geometry, we can just do it according to an attribute. 
+```{r}
+#which Level 1 have the most Level 2? us.web@data%>%count(L1_KEY,L2_KEY)%>%arrange(desc(n))
+#Just take the west...
+weco = us.web[grep("MARINE|NORTHWESTERN|DESERT|HIGHLANDS",us.web$L1_KEY),] #now 26 polys, 1.9mb
+rm(us.web) #recall we have this via readRDS(paste0(dir.shp,"/usL3ecoregUnionSimplpolys.rds"))
+```
+
+
+----------------------------------
+
+##2. Make a simple webmap
+
+The R package [leaflet](https://rstudio.github.io/leaflet/) facilitates use of this powerful javascript library for interactive maps. Leaflet output can include different basemaps as well as various overlays, and allows lots of pretty formatting and tricks (especially if you dig into the underlying js). The main tutorial is good, and a quick search will turn up plenty of other resources. However, the [mapview](https://github.com/environmentalinformatics-marburg/mapview) package extends `leaflet::` very nicely, making it remarkably quick and easy to generate extremely useful "first look" products. The main mapview [tutorial/documentation](http://environmentalinformatics-marburg.github.io/mapview/introduction.html) is also good and has more info on incorporating raster objects. 
+
+\
+
+Let's build one then examine it...
+```{r warning=FALSE}
+library(mapview) #mapviewOptions() may be of interest
+m = mapview(weco
+        ,zcol="L1_KEY" #the attribute(s) to set  
+        ,burst=T #different effects depending on zcol, but here makes each level separately selectable
+        ,color=c("tan","sandybrown","green","forestgreen") #one alternative to the default; another: topo.colors(length(unique(weco$L1_KEY)))
+        ,legend=T, legend.opacity=0.7 #should the default legend be included?
+        ,map.types = mapviewGetOption("basemaps")[1:4] #only use the first 4 basemap options
+        )
+#This consists of two main elements: 
+#   the distinct polygon sets generated due to burst=T: str(m@object,max.level = 1) 
+#   and the overall object attributes: str(m@map,max.level = 1)
+m@map$width = 900 #For the sake of the markdown we can update these; leave them alone for a full screen output
+m@map$height = 600
+m
+```
+
+\
+
+It's really just as easy as `mapview(my_sp_object)` to get a nice default output. The call here illustrates a subset of the possible options and configurations, but among other appealing "freebie" features are 
+ * the lat/long hover & zoom level
+ * the sensible standard baselayers
+ * the "zoom-to" links per layer
+ * the selectable layers
+ * the reasonable default legend
+ * the full attribute default pop-up
+
+In many cases we could just stop with the single call to mapview(). Simple can be best for exploring and seeing patterns. But a few more bells and whistles can also be quite handy.
+
+
+----------------------------------
+
+##3. Add more information
+
+What if we have some other data? Rasters are possible, but "light is right"" applies, and they generally need to be fairly coarse or small extent or both (but see just below). R `leaflet` has a group of `add*()` functions for `sp` objects that permit fine-level control of visual attributes, and these can be `%>%` onto the `@map` element of an existing `mapview` object. 
+
+\
+
+But the default syntax of `mapviewobj + spobj` or `mapviewobj1 + mapviewobj2` is almost insanely easy if you don't need anything fancy. Let's illustrate by adding points from the 2012 National Lakes Assessment data (taken directly from the .csv on the NARS homepage). Recall the special "pipe" character `%>%` keeps commands linked together, with the output of one going automatically into the next.
+
+```{r, message=FALSE, warning=FALSE}
+#It's very easy to add other sp objects, illustrated with a dynamic grab of EPA data from a non-spatial source
+library(readr)
+library(httr)
+content(GET("https://www.epa.gov/sites/production/files/2016-12/nla_2012_condition_categories.csv"), type = "text/csv") %>%
+  arrange(SITE_ID) %>% select(SITE_ID, AGGR_ECO9_2015, LAT_DD83, LON_DD83, TROPHIC_STATE) %>% data.frame() -> nla12
+coordinates(nla12) = ~LON_DD83 + LAT_DD83
+nla12@proj4string = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")
+nla12 = spTransform(nla12, weco@proj4string)
+```
+
+\
+
+Now we have a `SpatialPointsDataFrame`. This can be directly added to our existing map `m + nla12[weco,]` (remove the brackets to include all the sample points), but it renders as the default blue circle markers. If adjusting visual attributes extensively is unnecessary, perhaps the easiest option is to make it another `mapview`...
+
+```{r, message=FALSE, warning=FALSE}
+m2 = mapview(nla12[weco,], burst="TROPHIC_STATE", legend=T, legend.opacity=0.7, map.types = mapviewGetOption("basemaps")[1:4])
+m2@map$width = 900 #not necessarily strictly necessary, but probably good practice
+m2@map$height = 600
+m = m + m2 #or we could create m3 = m + m2
+```
+
+\
+
+How about large and regularly revised "point-of-reference" datasets (that aren't basemaps)? You're probably familiar with geospatial webservices, but if not, they allow dynamic and light-weight presentation because the underlying info is stored and maintained elsewhere. You get just what you need to display or query (though connection speed can influence performance). The number of things available as a service continues to grow rapidly, and EPA has supported this trend from the start. For example:
+
+ * [EPA WATERS services](https://www.epa.gov/waterdata/waters-mapping-services) display a number of Office of Water datasets, many aggregated from tribal and state partners.
+ * [WQP](http://www.waterqualitydata.us/webservices_documentation) is the centralized place for original water quality measurements.
+
+\
+
+To incorporate them here, use `leaflet::addWMSTiles()`, illustrated here for a vector (NHDPlus catchments) and raster service (NLCD). These become selectable layers in the control box. It's fairly easy to add services by appending to an existing mapview object, though it can be tricky to figure out exactly which layers to include (i.e., hunting around outside of R), and it's not currently all that easy to add in a default service legend (when one is available).
+
+```{r, message=FALSE, warning=FALSE}
+m@map = m@map %>%
+  addWMSTiles(group="NLCD", baseUrl="http://isse.cr.usgs.gov/arcgis/services/LandCover/USGS_EROS_LandCover_NLCD/MapServer/WMSServer?"
+              ,layers = c("1","6"), options = WMSTileOptions(format = "image/png", transparent = TRUE), attribution = "USGS") %>%
+  addWMSTiles(group="NHDplus", baseUrl="https://watersgeo.epa.gov/arcgis/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/WMSServer?"
+              ,layers = "0", options = WMSTileOptions(format = "image/png", transparent = TRUE), attribution = "EPA") %>%
+  mapview:::mapViewLayersControl(names = c("NLCD","NHDPlus")) #Pro-trick!
+#It is often necessary to enforce a drawing order...
+for(i in which(sapply(m@map$x$calls,function(i) i$method)=="addWMSTiles")) {
+  m@map$x$calls[[i]]$args[[4]]$zIndex = i
+  }
+m
+```
+
+Note that some services only display below a certain zoom level to prevent visual clutter and slowdowns. If you know you'll want to see that info, then it can help to start zoomed in.
+
+\
+
+\
+
+Another very nifty trick is the ability to "sync" two maps. This is best to see to understand...
+```{r}
+m2@map$width = 400 #make it small again for markdown
+m2@map$height = 400
+sync(m2, m2)
+```
+
+Last but not least, you have the option to export/save as .html to generate a file for sharing. (I tend to just click through this, but it's doable programmatically with `htmlwidgets`)
+
+
+----------------------------------
+
+##4. "But I don't want to zoom and pan!"
+
+Maybe you just want a nice static image. As with most things R, there are plenty of ways to plot spatial objects. Arc and true graphic design applications obviously offer a great deal of cartography power, but one package that I often find useful for creating publication grade maps is [tmap](https://github.com/mtennekes/tmap). It seems to still be in active development and also has strong documentation/examples (start with the [nutshell](https://cran.r-project.org/web/packages/tmap/vignettes/tmap-nutshell.html))
+
+\
+
+We won't dig into the options (and our simple data aren't really suited to the extra fancy stuff), but a couple of simple examples suggest the scope for getting something interesting. And the `save_tmap()` function allows good programmatic control of file outputs.
+
+```{r, message=FALSE, warning=FALSE}
+library(tmap)
+nla12 = nla12[!grepl("Not Assessed",nla12$TROPHIC_STATE),]
+paltroph = c("lightgreen","green","lightblue","slateblue")
+paleco = c("tan","sandybrown","green","forestgreen")
+
+#One big panel...
+tm_shape(weco) + #base object
+  tm_fill(col="L1_KEY", alpha=0.3, palette = paleco) + 
+  tm_borders("grey50", lwd = 0.3) + 
+tm_shape(nla12[weco,]) + #next object
+  tm_symbols(col="TROPHIC_STATE", size = 0.3, alpha=0.7, palette = paltroph, border.col = "grey80"
+             ,shape = "TROPHIC_STATE", shapes.legend=21:25, shapes.legend.fill = paltroph
+             ,legend.size.show=F, legend.col.show=F) + 
+tm_scale_bar(position = c("left","bottom"))
+
+#Or split into panels by a field
+#Not that you'd necessarily make THIS plot!!!
+tm_shape(weco) + 
+  tm_fill(col="L1_KEY", alpha=0.3, palette = as.list(paleco), colorNA="white", legend.show = F) + 
+  tm_borders("grey50", lwd = 0.3) + 
+  tm_facets("L1_KEY", drop.units = F) + #drop.units = T removes non-focal polys
+tm_shape(nla12[weco,]) + #now this plots onto each panel
+  tm_symbols(col="TROPHIC_STATE", size = 0.3, alpha=0.7, palette = paltroph, border.col = "grey80"
+             ,shape = "TROPHIC_STATE", shapes.legend=21:25, shapes.legend.fill = paltroph
+             ,legend.size.show=F, legend.col.show=F, legend.shape.show = F)
+```
+
+
+----------------------------------
+
+##5. More than maps? Is that possible?
+
+If you get the interaction bug, the [htmlwidgets](http://www.htmlwidgets.org/showcase_leaflet.html) collection of packages offers a great deal more functionality, much of which can be standalone or integrated into shiny project.
+
+\
+
+For just a glimpse, let's make a seemingly uninformative chart in order to demonstrate a "plain" (nonspatial) data widget. Here the counts of NLA12 trophic status by Level 3 ecoregion (note this is *not* really how these data should be aggregated!!!)
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(plotly) 
+#first 
+x = over(weco, nla12, returnList = T)
+x = do.call(rbind, lapply(names(x), function(n) x[[n]] %>% select(TROPHIC_STATE)%>%mutate(l3=n)))
+
+#not a sensible plot
+g = ggplot(x, aes(l3,TROPHIC_STATE, col=TROPHIC_STATE, fill=TROPHIC_STATE)) + 
+  geom_bar(stat = "identity", position = "stack") + 
+  theme(legend.position = "none", axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+g
+
+#but it gets more interesting!
+ggplotly(g)
+```
+
+
+
+\
+
+\
+
+\
+
+\
+
+\
+
+
+Disclaimer: Views expressed do not necessarily represent those of the USEPA. The work is provided on an "as is" basis and the user assumes responsibility for its use. Any reference to specific commercial products, processes, or services by service mark, trademark, manufacturer, or otherwise, does not constitute or imply their endorsement, recommendation or favoring.
