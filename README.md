@@ -1,7 +1,8 @@
 # miscR
 odd and ends
 
-##Description 
+##Description
+
 **_CAVEAT EMPTOR!_**
 This repo contains in-progress scripts depending on an updated base R installation as well as various packages. Some effort has been made to ensure that dependencies are installed and loaded, but this is firmly "research grade" scripting 
 
