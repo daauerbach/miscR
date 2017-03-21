@@ -3,13 +3,13 @@ library(rgdal)
 library(rgeos)
 library(dplyr)
 
+setwd("dataSpatial")
 
 ## --------------------------------------
 #### #states from TIGER
 ## --------------------------------------
-setwd("dataSpatial")
 tmp_dl <- tempfile()
-download.file("http://www2.census.gov/geo/tiger/GENZ2013/cb_2013_us_state_20m.zip", tmp_dl)
+download.file("http://www2.census.gov/geo/tiger/GENZ2013/cb_2013_us_state_20m.zip", tmp_dl, quiet = F, mode=ifelse(Sys.info()["sysname"]=="Windows","wb","w"))
 unzip(tmp_dl, exdir=tempdir())
 ST <- readOGR(tempdir(), "cb_2013_us_state_20m", stringsAsFactors = F)
 ST@data = ST@data[,c(5,6,8,9)]
@@ -26,6 +26,48 @@ ST[!grepl("AK|HI|PR",ST$STUSPS),] %>%
   saveRDS(., "spdf_conus.rds")
 ## --------------------------------------
 
+## --------------------------------------
+## EPA regions
+## --------------------------------------
+conus = readRDS("spdf_conus.rds")
+rp = gUnaryUnion(conus, conus$EPAregion)
+rd = data.frame(
+  r.int = as.integer(sapply(rp@polygons, function(i) i@ID))
+  ,r.char = paste0("R", sapply(rp@polygons, function(i) i@ID))
+  ,stringsAsFactors = F)
+SpatialPolygonsDataFrame(rp, data = rd, match.ID = "r.int") %>%
+  saveRDS(., "spdf_epareg.rds")
+## --------------------------------------
+
+## --------------------------------------
+## ACE regulatory districts
+## --------------------------------------
+#CorpsMap regulatory district spatial polygons
+#This "RegulatoryBoundary2016" replaces the 2015 file used for prior "ace" objects 
+#Appears to contain more detailed polygon geometry
+tmp_dl <- tempfile()
+download.file("http://geoplatform.usace.army.mil/sharing/content/items/f93279795459410dacf485637fc72311/data", tmp_dl
+              ,quiet = F, mode=ifelse(Sys.info()["sysname"]=="Windows","wb","w"))
+unzip(tmp_dl, exdir=dirname(tmp_dl))
+list.files(dirname(tmp_dl))
+ace = readOGR(dirname(tmp_dl), "RegulatoryBoundary2016", stringsAsFactors = F)
+ace@data = ace@data %>% select(district, distAbbr) %>% rename(DISTRICT = district, dis=distAbbr)
+row.names(ace)=ace$dis #identical(sapply(ace@polygons, function(i) i@ID), ace$dis)
+ace = ace[sort(row.names(ace)),]
+ace = spTransform(ace, CRS("+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0"))
+saveRDS(ace, "spdf_ACEregDist.rds") #15.7mb vs previous 12.8
+
+
+gIsValid(ace) #true
+ace.simp = rgeos::gSimplify(ace[!grepl("POA|POH", ace$dis),], 75, T) #still gIsValid
+SpatialPolygonsDataFrame(
+  ace.simp
+  ,data = ace@data%>%filter(dis %in% sapply(ace.simp@polygons, function(i) i@ID))
+  ,match.ID = "dis"
+  ) %>%
+saveRDS(., "spdf_ACEregCONUS_Simp.rds")
+
+## --------------------------------------
 
 ## --------------------------------------
 #### CONUS Level3 ecoregions, raw/full and union+simplify
@@ -54,22 +96,3 @@ us.webdata = us@data %>% dplyr::distinct(US_L3NAME, .keep_all = T) %>% dplyr::se
 us.web = SpatialPolygonsDataFrame(Sr = us.webpolys, data = us.webdata, match.ID = "US_L3NAME")
 saveRDS(us.web, paste0("spdf_conusL3ecoregUnionSimplpolys.rds"))
 ## --------------------------------------
-
-
-
-
-
-
-
-#CorpsMap regulatory district spatial polygons
-# unzip("ACEregDistrictBoundary.zip", exdir=tempdir())
-# ace = spTransform(readOGR(tempdir(), "regulatoryboundary2015", stringsAsFactors = F), crs(conus))
-# ace$dis = toupper(sapply(strsplit(ace$WEB_ADDR,":"), function(x) substr(x[2],7,9)))
-# ace$div = substr(ace$dis,1,2)
-# row.names(ace)=ace$dis
-# ace = ace[sort(row.names(ace)),]
-# saveRDS(ace, "spdf_ACEregDist.rds")
-ace = readRDS("spdf_ACEregDist.rds")
-colacediv = setNames(rainbow(8)[as.numeric(factor(unique(ace$div)))], unique(ace$div))
-ace = ace[-grep("POA|POH",ace$dis),] #drop AK & HI for consistency
-
