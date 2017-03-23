@@ -4,13 +4,16 @@ odd and ends
 ## Description
 
 **_CAVEAT EMPTOR!_**
-This repo contains in-progress scripts depending on an updated base R installation as well as various packages. Some effort has been made to ensure that dependencies are installed and loaded, but this is firmly "research grade" scripting 
+This repo contains in-progress scripts and objects depending on an updated base R installation as well as various packages. Some effort has been made to ensure that dependencies are installed and loaded, but this is firmly "research grade" scripting 
 
-Functions can be individually source()'d in a session via [devtools::source_url](http://www.inside-r.org/packages/cran/devtools/docs/source_url), for example: (note "raw" url)
+Functions can be individually source()'d in a session via [devtools::source_url](http://www.inside-r.org/packages/cran/devtools/docs/source_url), for example:
 ```R
 devtools::source_url("https://raw.githubusercontent.com/daauerbach/miscR/master/func_calcLndscpFtrWtlndThematicExtract.R")
 ```
-
+Likewise, data objects:
+```R
+conus <- readRDS(gzcon(url("https://github.com/daauerbach/miscR/raw/master/dataSpatial/spdf_conus.rds")))
+```
 
 ## Functions
  
@@ -20,3 +23,4 @@ devtools::source_url("https://raw.githubusercontent.com/daauerbach/miscR/master/
 
  + **dataSpatial** contains a number of `SpatialPolygonDataFrame.rds`: states, EPA regions, Army Corps regulatory districts, and CONUS Level3 ecoregions
  
+ + **table_NHDFCodes** is a lookup of NHD FCodes to descriptions and key attributes, especially "Hydrograph"
