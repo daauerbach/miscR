@@ -7,7 +7,7 @@ makeMVbase <- function(
   ,zcol = NULL, burst=F, legend=T, leg.op=0.5, pal=rainbow(6), mt=2:4
   ,EPA=T  
   ,wms = c("NHD","NHD+cat", "NLCD", "TWI")
-  ,GSWrecur=T
+  #,GSWrecur=T
   ){
   library(sp)
   library(rgdal)
@@ -69,20 +69,20 @@ makeMVbase <- function(
     m@map$x$calls[[i]]$args[[4]]$zIndex = i
   }    
   
-  #Fairly kludgy but seems to be working?
-  if(GSWrecur) {
-    m@map <- m@map %>%
-      addTiles(group="GSWrecur"
-               ,urlTemplate = "https://storage.googleapis.com/global-surface-water/maptiles/recurrence/{z}/{x}/{y}.png"
-               ,options = tileOptions(
-                 noWrap=T, format = "image/png", maxNativeZoom = 13
-                 ,errorTileUrl = "https://storage.googleapis.com/global-surface-water/downloads_ancillary/blank.png")
-               ,attribution = "EC JRC/Google")
-    m@map <- leaflet::addLayersControl(map = m@map, position = mapviewGetOption("layers.control.pos")
-                                   ,baseGroups = c(m@map$x$calls[[mapview:::getLayerControlEntriesFromMap(m@map)[1]]]$args[[1]]
-                                                   ,"GSW recurr")
-                                   ,overlayGroups = mapview:::getLayerNamesFromMap(m@map))
-  }
+  # #"worked", but repeatedly crashing
+  # if(GSWrecur) {
+  #   m@map <- m@map %>%
+  #     addTiles(group="GSWrecur"
+  #              ,urlTemplate = "https://storage.googleapis.com/global-surface-water/maptiles/recurrence/{z}/{x}/{y}.png"
+  #              ,options = tileOptions(
+  #                noWrap=T, format = "image/png", maxNativeZoom = 13
+  #                ,errorTileUrl = "https://storage.googleapis.com/global-surface-water/downloads_ancillary/blank.png")
+  #              ,attribution = "EC JRC/Google")
+  #   m@map <- leaflet::addLayersControl(map = m@map, position = mapviewGetOption("layers.control.pos")
+  #                                  ,baseGroups = c(m@map$x$calls[[mapview:::getLayerControlEntriesFromMap(m@map)[1]]]$args[[1]]
+  #                                                  ,"GSW recurr")
+  #                                  ,overlayGroups = mapview:::getLayerNamesFromMap(m@map))
+  # }
   
   return(m)
 }
