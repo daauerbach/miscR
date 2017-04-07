@@ -3,7 +3,7 @@
 ## Not utilizing all options
 ## Will need updating when new report is in production
 
-getWATERS_WtrshdRpt <= function(
+getWATERS_WtrshdRpt <- function(
   comid = "4795168" #also can accept pPermanentIdentifier, pFeatureID
   #can get html returned, but fixing optOutFormat = "JSON"
   #skipping optOutPrettyPrint since only interested in parsing at this point
