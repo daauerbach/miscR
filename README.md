@@ -19,7 +19,9 @@ conus <- readRDS(gzcon(url("https://github.com/daauerbach/miscR/raw/master/dataS
  
  + **func_calcLndscpFtrWtlndThematicExtract** is a parallelized raster extract function for CONUS landscape features related to wetlands, currently  [PWA](https://enviroatlas.epa.gov/enviroatlas/DataFactSheets/pdf/supplemental/potentialwetlandarea.pdf), [NEF, link is to webservice not full data ](https://www.sciencebase.gov/arcgis/rest/services/Catalog/5363b779e4b08180b014255c/MapServer/) and [NLCD2011](https://www.mrlc.gov/nlcd2011.php). It is **not** very generalized but should be easy to modify. Presuming the raster datasets are available (not checked) at the paths in function args, it takes a `SpatialPolygonsDataFrame` object and returns a dataframe of percentages and raw areas for each value/level of the rasters in each polygon.
  
- + VERY ALPHA **func_makeMVbase** generates a base mapview with several key WMS services that is suited to additional spatial data layers via `+`. Commented out the "GSWrecur[rence]" base group tiles after repeated Rstudio crashes
+ + **func_makeMVbase** generates a base mapview with several key WMS services that is suited to additional spatial data layers via `+`. Commented out the "GSWrecur[rence]" base group tiles after repeated Rstudio crashes VERY ALPHA
+ 
+ + **func_getWATERS_RADevent** Simple function to query EPA WATERS [RAD event webservice](https://www.epa.gov/waterdata/rad-event-info-service). Generates a url string, hits the endpoint and returns a list of results if the source_featureid is valid. NOT HEAVILY TESTED
  
 ## Objects
 
