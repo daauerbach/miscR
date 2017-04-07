@@ -22,6 +22,8 @@ conus <- readRDS(gzcon(url("https://github.com/daauerbach/miscR/raw/master/dataS
  + **func_makeMVbase** generates a base mapview with several key WMS services that is suited to additional spatial data layers via `+`. Commented out the "GSWrecur[rence]" base group tiles after repeated Rstudio crashes VERY ALPHA
  
  + **func_getWATERS_RADevent** Simple function to query EPA WATERS [RAD event webservice](https://www.epa.gov/waterdata/rad-event-info-service). Generates a url string, hits the endpoint and returns a list of results if the source_featureid is valid. NOT HEAVILY TESTED
+
+ + **func_getWATERS_WtrshdRpt** Simple function to query EPA WATERS [Watershed Characterization](https://www.epa.gov/waterdata/watershed-characterization-service). Fixed on COMID input and JSON output. Will need updating shortly pending ongoing updates in service.
  
 ## Objects
 

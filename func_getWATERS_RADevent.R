@@ -18,6 +18,7 @@ getWATERS_RADevent <- function(
   ,arch = "FALSE" #include archive results
   ,u = "http://ofmpub.epa.gov/waters10/RADEventInfo.Service" #base service endpoint
 ){
+  library(dplyr)
   #build the query url
   uq <- paste0(u
                ,paste0("?pRadQuery=",paste0(c(radp,i,arch),collapse = "%7C"))
