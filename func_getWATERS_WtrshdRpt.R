@@ -22,7 +22,7 @@ getWATERS_WtrshdRpt <- function(
   j <- try(httr::content(httr::GET(uq), type="application/json"))
   if(length(j$output)>2) {
     s <- j$output #should be 61 element list
-  }
+  } else { s <- NULL }
   return(s)
 }
 
