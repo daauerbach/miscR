@@ -20,7 +20,7 @@ getWATERS_WtrshdRpt <- function(
   #" Error: lexical error: malformed number, a digit is required after the minus sign."
   #Not fully fixing for the moment, given pending rewrite around new service format
   j <- try(httr::content(httr::GET(uq), type="application/json"))
-  if(length(j$output)>2) {
+  if(is.list(j)) {
     s <- j$output #should be 61 element list
   } else { s <- NULL }
   return(s)
