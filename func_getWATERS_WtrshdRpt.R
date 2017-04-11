@@ -14,11 +14,17 @@ getWATERS_WtrshdRpt <- function(
   #build the query url
   uq <- paste0(u, paste0("?pComID=",comid,"&optOutFormat=JSON"))
   #make the query
-  #could/should?? add better checks for $status$status_code != 0
-  #currently just silently fails as NULL (ok for now)
-  httr::GET(uq)%>%
-    httr::content(type="application/json") %>% #2element list
-    .$output -> s
-  #61 element named list if !NULL
+    #could/should?? add better checks for $status$status_code != 0
+    #currently just silently fails as NULL (ok for now)
+  #Underlying jsonlite does not like negative decimal values with no preceding integer
+  #" Error: lexical error: malformed number, a digit is required after the minus sign."
+  #Not fully fixing for the moment, given pending rewrite around new service format
+  j <- try(httr::content(httr::GET(uq), type="application/json"))
+  if(length(j$output)>2) {
+    s <- j$output #should be 61 element list
+  }
   return(s)
 }
+
+
+#httr::GET(uq)%>%httr::content(type="application/json")%>%  .$output -> s
