@@ -19,11 +19,15 @@ conus <- readRDS(gzcon(url("https://github.com/daauerbach/miscR/raw/master/dataS
  
  + **func_calcLndscpFtrWtlndThematicExtract** is a parallelized raster extract function for CONUS landscape features related to wetlands, currently  [PWA](https://enviroatlas.epa.gov/enviroatlas/DataFactSheets/pdf/supplemental/potentialwetlandarea.pdf), [NEF, link is to webservice not full data ](https://www.sciencebase.gov/arcgis/rest/services/Catalog/5363b779e4b08180b014255c/MapServer/) and [NLCD2011](https://www.mrlc.gov/nlcd2011.php). It is **not** very generalized but should be easy to modify. Presuming the raster datasets are available (not checked) at the paths in function args, it takes a `SpatialPolygonsDataFrame` object and returns a dataframe of percentages and raw areas for each value/level of the rasters in each polygon.
  
- + **func_makeMVbase** generates a base mapview with several key WMS services that is suited to additional spatial data layers via `+`. Commented out the "GSWrecur[rence]" base group tiles after repeated Rstudio crashes VERY ALPHA
+**VERY ALPHA SECTION**
+
+ + **func_makeMVbase** generates a base mapview with several key WMS services that is suited to additional spatial data layers via `+`. Commented out the "GSWrecur[rence]" base group tiles after repeated Rstudio crashes (though this is looking like it may be a mapview/Rstudio bug)
  
- + **func_getWATERS_RADevent** Simple function to query EPA WATERS [RAD event webservice](https://www.epa.gov/waterdata/rad-event-info-service). Generates a url string, hits the endpoint and returns a list of results if the source_featureid is valid. NOT HEAVILY TESTED
+ + **func_getWATERS_RADevent** Simple function to query EPA WATERS [RAD event webservice](https://www.epa.gov/waterdata/rad-event-info-service). Generates a url string, hits the endpoint and returns a list of results if the source_featureid is valid.
 
  + **func_getWATERS_WtrshdRpt** Simple function to query EPA WATERS [Watershed Characterization](https://www.epa.gov/waterdata/watershed-characterization-service). Fixed on COMID input and JSON output. Will need updating shortly pending ongoing updates in service.
+ 
+ + **func_getWATERS_PtSvc** Simple function to query EPA WATERS [Point Indexing Service](https://www.epa.gov/waterdata/point-indexing-service). Given a long-lat, will attempt to return the nearest NHD element (by the default "Raindrop" method, following the NHDPlus flow direction grid). Cool!
  
 ## Objects
 
