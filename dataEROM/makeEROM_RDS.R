@@ -54,25 +54,33 @@ setwd("/Users/dauerbac/Documents/R/NHDPlusMA/NHDPlus02/EROMExtension")
 vpu02 <- bindEROM("vpu02")
 foreign::read.dbf("/Users/dauerbac/Documents/R/NHDPlusMA/NHDPlus02/NHDSnapshot/Hydrography/NHDFlowline.dbf", as.is = T) %>%
   left_join(fcodes, by=c("FCODE"="FCode")) %>%
-  right_join(vpu02, by="COMID") -> vpu02
+  right_join(vpu02, by="COMID") %>% 
+  select(-GNIS_NBR) -> vpu02 #LowerColorado is missing GNIS_NBR, which is all==0 here, so dropping to allow bind_rows
+names(vpu02) <- toupper(names(vpu02))
 
 setwd("/Users/dauerbac/Documents/R/NHDPlusMS/NHDPlus11/EROMExtension")
 vpu11 <- bindEROM("vpu11")
 foreign::read.dbf("/Users/dauerbac/Documents/R/NHDPlusMS/NHDPlus11/NHDSnapshot/Hydrography/NHDFlowline.dbf", as.is = T) %>%
   left_join(fcodes, by=c("FCODE"="FCode")) %>%
-  right_join(vpu11, by="COMID") -> vpu11
+  right_join(vpu11, by="COMID") %>%
+  select(-GNIS_NBR) -> vpu11
+names(vpu11) <- toupper(names(vpu11))
 
 setwd("/Users/dauerbac/Documents/R/NHDPlusCO/NHDPlus15/EROMExtension")
 vpu15 <- bindEROM("vpu15")
 foreign::read.dbf("/Users/dauerbac/Documents/R/NHDPlusCO/NHDPlus15/NHDSnapshot/Hydrography/NHDFlowline.dbf", as.is = T) %>%
   left_join(fcodes, by=c("FCode"="FCode")) %>%
   right_join(vpu15, by=c("ComID"="COMID")) -> vpu15
+names(vpu15) <- toupper(names(vpu15))
 
 setwd("/Users/dauerbac/Documents/R/NHDPlusPN/NHDPlus17/EROMExtension")
 vpu17 <- bindEROM("vpu17")
 foreign::read.dbf("/Users/dauerbac/Documents/R/NHDPlusPN/NHDPlus17/NHDSnapshot/Hydrography/NHDFlowline.dbf", as.is = T) %>%
   left_join(fcodes, by=c("FCODE"="FCode")) %>%
-  right_join(vpu17, by=c("COMID"="COMID")) -> vpu17
+  right_join(vpu17, by=c("COMID"="COMID")) %>%
+  select(-GNIS_NBR) -> vpu17
+names(vpu17) <- toupper(names(vpu17))
+
 
 setwd("path/to/local/miscR/dataEROM")
 saveRDS(vpu02,"erom_vpu02.rds")
