@@ -1,0 +1,164 @@
+---
+title: "CatRank sketch"
+author: "DA Auerbach"
+date: "May 10, 2017"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sp)
+library(rgdal)
+library(dplyr)
+library(tmap)
+
+kcat <- readRDS("/Users/dauerbac/Google Drive/miscR/catRank/kingCo_StrcatEROM_spdf.rds")
+```
+
+# Boundary extent polygons
+
+Obviously King County has more detailed and locally informed datasets, but for the sake of quick demonstration we can start with just a few polygon(s) to constrain the national data. The following chunk pulls together "basin" and "watershed" polygons from the King GIS ftp along with the basic political boundaries using GADM from `raster::getData`.
+
+```{r message=FALSE, warning=FALSE, echo=TRUE, eval=FALSE}
+uz <- "ftp://ftp.kingcounty.gov/gis-web/GISData/hydroGDB.zip"
+fnuz <- basename(uz)
+dirzip <- tempdir()
+setwd(dirzip)
+if(!file.exists(fnuz)){
+    download.file(uz, destfile=fnuz, quiet = F
+                  ,mode=ifelse(Sys.info()["sysname"]=="Windows","wb","w"))
+  }
+unzip(fnuz, exdir = "/Users/dauerbac/Documents/R")
+setwd("/Users/dauerbac/Documents/R/hydroGDB/")
+
+rgdal::ogrListLayers("KingCounty_GDB_hydro.gdb")
+#these are lambert, feet 
+bsn <- rgdal::readOGR("KingCounty_GDB_hydro.gdb"
+                      ,layer="topo_basin_kc_area"
+                      ,stringsAsFactors=F)
+wtr <- rgdal::readOGR("KingCounty_GDB_hydro.gdb"
+                      ,layer="topo_watershed_kc_area"
+                      ,stringsAsFactors=F)
+
+#this is longlat WGS84
+cnty <- raster::getData("GADM", country="USA", level=2)
+i <- cnty@data %>%
+  filter(NAME_1 == "Washington", NAME_2 == "King") %>% .$OBJECTID
+king <- cnty[cnty$OBJECTID == i,]
+```
+
+# Subset NHDPlus
+
+Next we can intersect these polygons with the [NHDPlus](http://www.horizon-systems.com/NHDPlus/NHDPlusV2_home.php) dataset, a heavily refined and extended version of the "medium-resolution" NHD (sometimes called 1:100,000) with fairly extensive documentation. Here I'm using (lightly) simplified catchments for Washington state that I have handy, but this can be modified fairly simply to flowlines etc.
+
+```{r message=FALSE, warning=FALSE, echo=TRUE, eval=FALSE}
+#57314 simplified catchments in AEA, NAD83, m; ~226mb in mem
+waCat <- readOGR("/Users/dauerbac/Documents/R/NHDstates", "_WA", stringsAsFactors = F)
+#reproject extent objects
+king <- spTransform(king, waCat@proj4string)
+wtr <- spTransform(wtr, waCat@proj4string)
+bsn <- spTransform(bsn, waCat@proj4string)
+#perform the intersect/over on the single feature king object 
+#(choice not critical here, effectively identical extent)
+kcat <- waCat[king,c("FEATUREID")] 
+kcat@data <- kcat@data %>% rename(COMID = FEATUREID)
+##not run here, but can do a quick base plot to make sure things are as expected
+par(mar=rep(0,4))
+plot(king, border=4, lwd=3) #1 political extent
+plot(wtr, add=T, border=3, lwd=2) #11 watersheds
+plot(bsn, add=T, border=1) #100 basins
+plot(kcat, add=T, border="tan", lwd=0.2) #2351 catchments
+```
+
+# Join streamCat & monthly EROM
+
+Now for a more interesting part: associate the [StreamCat](ftp://newftp.epa.gov/EPADataCommons/ORD/NHDPlusLandscapeAttributes/StreamCat/WelcomePage.html) landscape attributes by joining from a national geopackage.
+
+```{r message=FALSE, warning=FALSE, echo=TRUE, eval=FALSE}
+#src_sqlite(f) #lists the tbls
+f <- "/Users/dauerbac/Documents/R/streamcat.gpkg"
+#506 attributes/features/variables
+s <- src_sqlite(f) %>% tbl(.,"streamcat")
+kcat@data <- s %>% 
+  filter(COMID %in% kcat$COMID) %>% #just the rows in King Country
+  select(COMID:NHDPlus_Region) %>% #starting with all features
+  collect(n = Inf) %>% #bring into memory from disk
+  left_join(kcat@data, ., by="COMID") #this is nicely one to one (not gauranteed from the %in% filter)
+```
+
+We can add the NHDPlus estimates of streamflow (discharge, Q) the same way to arrive at a 2351 x 527 spatial polygon dataframe.
+
+```{r message=FALSE, warning=FALSE, echo=TRUE, eval=FALSE}
+f <- "/Users/dauerbac/Documents/R/NHDPlus_Seamless_0403.gpkg"
+s <- src_sqlite(f) %>% tbl(.,"NHDFlowline_Network")
+kcat@data <- s %>% 
+  filter(COMID %in% kcat$COMID) %>% #again just King Country
+  select(VPUID, REACHCODE, COMID, FCODE
+         ,StreamOrde, LENGTHKM, ArbolateSu, TotDASqKM, MINELEVSMO, MAXELEVSMO, SLOPE
+         ,contains("QE_")) %>%
+  collect(n = Inf) %>%
+  left_join(kcat@data, ., by="COMID")
+#save this out
+saveRDS(kcat, "/Users/dauerbac/Google Drive/NHDplus/kingCo_StrcatEROM_spdf.rds")
+```
+
+# Simple prioritization 
+
+Of course we'd want to explore these data **much** more, and the following decisions are best made if vetted with stakeholder input, but as a starting point we can make several choices to focus a demonstration analysis. 
+
+First, we can emphasize the features that are calculated for a 100m ripirian buffer per flowline associated with each catchment. Like the non-riparian versions, these come in 2 flavors: the local catchment ("cat") and the entire upstream watershed ("Ws"; calc'd as the arithmetic mean, see the StreamCat documentation). Both could be appropriate and informative, but an initial focus on the "cat" makes a (greatly) simplifying assumption that nearby conditions in the local catchment take priority.
+
+Next, we can examine features that are presumptively stressors or sources of aquatic ecosystem uplift (or both). This is a much-considered question in the literature, along with the appropriate technical and conceptual approaches to weighting the focal set. Complementing the StreamCat data and EPA efforts to examine overall "integrity", the [NFHP](https://ecosystems.usgs.gov/fishhabitat/) project has generated relevant datasets and analyses, with both building from conceptual foundations developed in the ongoing Recovery Potential Screening tools and data [RPS](https://www.epa.gov/rps/rps-methodology-using-rps-tool-compare-watersheds-and-evaluate-options) + [WSIO](https://www.epa.gov/wsio/data-tables-and-map-services). In any event, a few putative stressors could be used to screen for higher or lower restoration priorities (depending on goals and budget) and/or areas perhaps more suited to protection if lower riparian stressor incidence is assumed to correspond to better in-stream conditions (which is reasonable but may not necessarily be the case).
+
+A given set of features needs to be combined and possibly weighted to produce a ranking or screening, and this element of the analysis can take *many* different forms. One straightforward approach is to examine locations in terms of how their values compare across the feature statistical distributions. So, fairly arbitrarily, if we wanted to target "least stressed" sites we might look for low road density, developed cover, pollutant permit density, and annual forest cover loss (all within the riparian buffer here) as well as low maximum estimated instream temperature and high estimated August mean streamflow (here scaled as unit discharge).
+
+```{r message=FALSE, warning=FALSE, echo=TRUE, eval=TRUE, out.height=600, out.width=800}
+kc <- kcat #make a copy to preserve the base object
+kc@data <- kc@data %>%
+  mutate(totDvlpPct = PctUrbHi2011CatRp100 + PctUrbMd2011CatRp100 + PctUrbLo2011CatRp100
+         ,totPrmtDens = NPDESDensCat + SuperfundDensCat + TRIDensCat
+         ,avgFrstLoss = rowMeans(dplyr::select(kcat@data, contains("PctFrstLoss")), na.rm=T)
+         ,maxSmrStTmp = apply(dplyr::select(kcat@data, contains("MSST_")),1,max)
+         ,estAugUnitQ = QE_09 / TotDASqKM #for all months+annual: mutate_at(vars(contains("QE_")), funs(./TotDASqKM))
+         ) %>%
+  select(RdDensCatRp100, totDvlpPct, totPrmtDens
+         ,avgFrstLoss, maxSmrStTmp, estAugUnitQ)
+
+#these features can be quickly visualized
+tm_shape(kc) + tm_fill(col = names(kc)) +
+  tm_scale_bar(position = c("right","bottom"))
+
+#making apparent the highly skewed distributions in "total developed" and "total permit density" 
+sapply(kc@data, quantile, na.rm = T)
+#a coarse option is to just set fixed thresholds:
+#is total dvlp percentage < 10%? is permit density == 0?
+
+#this could be written as a more flexible user function
+#but the following shows a basic "hardcoded" option
+kc@data <- kc@data %>%
+  mutate_at(vars(RdDensCatRp100,avgFrstLoss, maxSmrStTmp, estAugUnitQ)
+             ,funs(findInterval(., quantile(., na.rm=T)))) %>%
+  mutate(target = (RdDensCatRp100==1) & #below 25th in riparian road density
+           (avgFrstLoss==1) & #below 25th in forest loss 2008-2013
+           (maxSmrStTmp==1) & #coolest quartile estimated summer stream temp
+           (estAugUnitQ==4) & #greatest estimated mean Aug. streamflow
+           (totDvlpPct <10) & #less than 10% low+medium+high developed cover
+           (totPrmtDens<1) #low total density of NPDES, Superfund & TRI
+           ) 
+
+#these conditions highlight 93 of the 2351 catchments, roughly 4%
+sum(kc$target, na.rm = T); sum(kc$target/nrow(kc), na.rm = T)
+
+#and the targets are, unsurprisingly, higher toward the mountains
+tm_shape(kc) + tm_fill(col = "target", palette = c("wheat1","dodgerblue")) +
+  tm_scale_bar(position = c("right","bottom")) +
+  tm_layout(title = "King Co. NHDPlus Catchments meeting priority conditions", frame.double.line = T, legend.outside = F)
+
+```
+
