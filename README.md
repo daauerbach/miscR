@@ -42,3 +42,7 @@ conus <- readRDS(gzcon(url("https://github.com/daauerbach/miscR/raw/master/dataS
  + **dataEROM** contains per-VPU `data.frames` of NHDPlus [EROM](ftp://ftp.horizon-systems.com/NHDPlus/NHDPlusV21/Documentation/TechnicalDocs/EROM_Monthly_Flows.pdf) streamflow estimates (MAF and monthly mean, all cfs) associated with the flowlines in the corresponding hydrography snapshot.
 
  + **table_NHDFCodes** is a lookup of NHD FCodes to descriptions and key attributes, especially "Hydrograph"
+
+
+
+
